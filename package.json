@@ -4,9 +4,17 @@
   "description": "studiospace backend server",
   "license": "ISC",
   "author": "sudipto roy",
-  "type": "commonjs",
+  "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "mongodb": "^7.8.0",
+    "nodemon": "^3.1.14"
   }
 }
