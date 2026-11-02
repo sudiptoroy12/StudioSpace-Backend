@@ -25,6 +25,8 @@ app.use(express.json())
 
 const mongoClient = await connectToMongoDB()
 const db = mongoClient.db('studiospace')
+const studiosCollection = db.collection('studios')
+const bookingsCollection = db.collection('bookings')
 
 
 const verifyToken = async (req, res, next) => {
@@ -48,6 +50,22 @@ const verifyToken = async (req, res, next) => {
     return res.status(500).send({ msg: "Server Error!" });
   }
 };
+
+app.post('/studios', async (req, res) => {
+    const studio = req.body;
+    const result = await studiosCollection.insertOne(studio);
+    res.send(result);
+})
+
+app.get('/studios', async (req, res) => {
+    const studios = await studiosCollection.find().toArray();
+    res.send(studios);
+})
+
+app.get('/featured-studios', async (req, res) => {
+    const featuredStudios = await studiosCollection.find().limit(6).toArray();
+    res.send(featuredStudios);
+})
 
 
 app.get('/', (req, res) => {
