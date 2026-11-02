@@ -1,7 +1,7 @@
 import express from 'express'
 import 'dotenv/config'
 import cors from 'cors'
-import { MongoClient } from 'mongodb'
+import { MongoClient, ObjectId } from 'mongodb'
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 
@@ -266,6 +266,12 @@ app.get('/studios', async (req, res) => {
     const studios = await studiosCollection.find().toArray();
     res.send(studios);
 })
+
+app.get('/studios/:id', async (req, res) => {
+    const { id } = req.params;
+    const studio = await studiosCollection.findOne({ _id: new ObjectId(id) });
+    res.send(studio);
+});
 
 app.get('/featured-studios', async (req, res) => {
     const featuredStudios = await studiosCollection.find().limit(6).toArray();
