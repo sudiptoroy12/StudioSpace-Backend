@@ -59,7 +59,7 @@ const verifyToken = async (req, res, next) => {
     });
   }
 };
-
+// insert single studio
 app.post("/studios", verifyToken, async (req, res) => {
   try {
     const {
@@ -154,6 +154,110 @@ app.post("/studios", verifyToken, async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to create studio listing.",
+    });
+  }
+});
+// insert multiple studios
+app.post("/studios", verifyToken, async (req, res) => {
+  try {
+    const { studios } = req.body;
+
+    if (!Array.isArray(studios) || studios.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a non-empty studios array.",
+      });
+    }
+
+    if (studios.length > 100) {
+      return res.status(400).json({
+        success: false,
+        message: "Maximum 100 studios allowed per request.",
+      });
+    }
+
+    const { sub: userId, email, name } = req.user;
+
+    if (!userId || !email || !name) {
+      return res.status(401).json({
+        success: false,
+        message: "User information is missing from the token.",
+      });
+    }
+
+    const validCategories = [
+      "photo-studios",
+      "sound-stages",
+      "podcast-rooms",
+      "music-suites",
+      "art-workshops",
+    ];
+
+    const preparedStudios = studios.map((studio, index) => {
+      if (
+        !studio.title?.trim() ||
+        !validCategories.includes(studio.category) ||
+        !studio.location?.trim() ||
+        !studio.description?.trim() ||
+        studio.capacity == null ||
+        studio.hourlyRate == null ||
+        studio.deposit == null
+      ) {
+        throw new Error(
+          `Invalid or missing required fields in studio at index ${index}.`,
+        );
+      }
+
+      const capacity = Number(studio.capacity);
+      const hourlyRate = Number(studio.hourlyRate);
+      const deposit = Number(studio.deposit);
+
+      if (
+        !Number.isFinite(capacity) ||
+        capacity < 1 ||
+        !Number.isFinite(hourlyRate) ||
+        hourlyRate < 0 ||
+        !Number.isFinite(deposit) ||
+        deposit < 0
+      ) {
+        throw new Error(`Invalid numeric values at studio index ${index}.`);
+      }
+
+      return {
+        title: studio.title.trim(),
+        category: studio.category,
+        capacity,
+        hourlyRate,
+        deposit,
+        location: studio.location.trim(),
+        imageUrl: studio.imageUrl || "",
+        amenities: Array.isArray(studio.amenities)
+          ? studio.amenities
+          : [],
+        description: studio.description.trim(),
+        host: {
+          userId,
+          name,
+          email,
+        },
+        createdAt: new Date(),
+      };
+    });
+
+    const result = await studiosCollection.insertMany(preparedStudios);
+
+    return res.status(201).json({
+      success: true,
+      message: "Studios inserted successfully.",
+      insertedCount: result.insertedCount,
+      insertedIds: result.insertedIds,
+    });
+  } catch (error) {
+    console.error("Bulk studio insertion failed:", error);
+
+    return res.status(400).json({
+      success: false,
+      message: error.message || "Failed to insert studios.",
     });
   }
 });
