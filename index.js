@@ -21,13 +21,20 @@ export async function connectToMongoDB() {
   }
 }
 
+
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://studio-space-frontend-liard.vercel.app",
+];
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL,
+    origin: allowedOrigins,
     methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
 app.use(express.json())
 
 const mongoUri = process.env.MONGODB_URI;
