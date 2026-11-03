@@ -274,33 +274,396 @@ app.get('/studios/:id', async (req, res) => {
 });
 
 
-app.post('/bookings',async (req, res) => {
-    const booking = req.body; 
-    const result = await bookingsCollection.insertOne(booking);
-    res.send(result);
-})
-
-app.get("/my-bookings/:email", async (req, res) => {
+app.post("/bookings", verifyToken, async (req, res) => {
   try {
-    const { email } = req.params;
+    const { studioId, date, startTime, hours } = req.body;
 
+    // 1. Validate required fields
+    if (!studioId || !date || !startTime || hours === undefined) {
+      return res.status(400).send({
+        message: "Studio, date, start time, and duration are required.",
+      });
+    }
+
+    if (!ObjectId.isValid(studioId)) {
+      return res.status(400).send({
+        message: "Invalid studio ID.",
+      });
+    }
+
+    // 2. Validate duration
+    const bookingHours = Number(hours);
+
+    if (
+      !Number.isFinite(bookingHours) ||
+      bookingHours <= 0 ||
+      bookingHours > 8
+    ) {
+      return res.status(400).send({
+        message: "Booking duration must be between 1 and 8 hours.",
+      });
+    }
+
+    // 3. Validate start time
+    const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+    if (typeof startTime !== "string" || !timePattern.test(startTime)) {
+      return res.status(400).send({
+        message: "Invalid start time.",
+      });
+    }
+
+    const [startHour, startMinute] = startTime.split(":").map(Number);
+
+    const requestedStart = startHour * 60 + startMinute;
+    const requestedEnd = requestedStart + bookingHours * 60;
+
+    if (requestedEnd >= 24 * 60) {
+      return res.status(400).send({
+        message: "Your booking must end before midnight.",
+      });
+    }
+
+    const endTime = `${String(
+      Math.floor(requestedEnd / 60)
+    ).padStart(2, "0")}:${String(requestedEnd % 60).padStart(2, "0")}`;
+
+    // 4. Find the studio
+    const studio = await studiosCollection.findOne({
+      _id: new ObjectId(studioId),
+    });
+
+    if (!studio) {
+      return res.status(404).send({
+        message: "Studio not found.",
+      });
+    }
+
+    // 5. Check existing CONFIRMED bookings for this studio and date
+    const confirmedBookings = await bookingsCollection
+      .find({
+        studioId: studio._id.toString(),
+        date,
+        status: "Confirmed",
+      })
+      .toArray();
+
+    // 6. Check whether the requested time overlaps an existing booking
+    const hasConflict = confirmedBookings.some((booking) => {
+      if (!booking.startTime || !booking.endTime) {
+        return false;
+      }
+
+      const [existingStartHour, existingStartMinute] =
+        booking.startTime.split(":").map(Number);
+
+      const [existingEndHour, existingEndMinute] =
+        booking.endTime.split(":").map(Number);
+
+      const existingStart =
+        existingStartHour * 60 + existingStartMinute;
+
+      const existingEnd =
+        existingEndHour * 60 + existingEndMinute;
+
+      // Two time intervals overlap when:
+      // requestedStart < existingEnd AND requestedEnd > existingStart
+      return (
+        requestedStart < existingEnd &&
+        requestedEnd > existingStart
+      );
+    });
+
+    if (hasConflict) {
+      return res.status(409).send({
+        message:
+          "This studio is already booked for part of your selected time. Please choose another time slot.",
+      });
+    }
+
+    // 7. Calculate the price on the server
+    const hourlyRate = Number(studio.hourlyRate);
+    const deposit = Number(studio.deposit ?? 0);
+
+    if (
+      !Number.isFinite(hourlyRate) ||
+      hourlyRate < 0 ||
+      !Number.isFinite(deposit) ||
+      deposit < 0
+    ) {
+      return res.status(400).send({
+        message: "The studio has invalid pricing information.",
+      });
+    }
+
+    // 8. Create the booking only if no conflict exists
+    const booking = {
+      email: req.user.email,
+      studioId: studio._id.toString(),
+      studioTitle: studio.title,
+      category: studio.category,
+      imageUrl: studio.imageUrl,
+      location: studio.location,
+      date,
+      startTime,
+      endTime,
+      hours: bookingHours,
+      hourlyRate,
+      deposit,
+      total: hourlyRate * bookingHours + deposit,
+      status: "Pending",
+      createdAt: new Date(),
+    };
+
+    const result = await bookingsCollection.insertOne(booking);
+
+    return res.status(201).send({
+      message: "Booking created successfully.",
+      data: {
+        ...booking,
+        _id: result.insertedId,
+      },
+    });
+  } catch (error) {
+    console.error("Create booking error:", error);
+
+    return res.status(500).send({
+      message: "Failed to create booking.",
+    });
+  }
+});
+
+app.get("/my-bookings", verifyToken, async (req, res) => {
+  try {
     const bookings = await bookingsCollection
-      .find({ email })
+      .find({ email: req.user.email })
       .sort({ createdAt: -1 })
       .toArray();
 
-    res.send(bookings);
+    return res.status(200).send(bookings);
   } catch (error) {
-    console.error("Failed to fetch bookings:", error);
+    console.error("Fetch bookings error:", error);
 
-    res.status(500).send({
-      message: "Failed to retrieve bookings",
+    return res.status(500).send({
+      message: "Failed to fetch bookings.",
+    });
+  }
+});
+
+app.patch("/bookings/:id/cancel", verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        message: "Invalid booking ID.",
+      });
+    }
+
+    const result = await bookingsCollection.updateOne(
+      {
+        _id: new ObjectId(id),
+        email: req.user.email,
+        status: "Pending",
+      },
+      {
+        $set: {
+          status: "Cancelled",
+          cancelledAt: new Date(),
+        },
+      }
+    );
+
+    if (result.modifiedCount === 0) {
+      return res.status(409).send({
+        message:
+          "This booking cannot be cancelled. It may not belong to you or may no longer be pending.",
+      });
+    }
+
+    return res.status(200).send({
+      message: "Booking cancelled successfully.",
+    });
+  } catch (error) {
+    console.error("Cancel booking error:", error);
+
+    return res.status(500).send({
+      message: "Failed to cancel booking.",
     });
   }
 });
 
 
+app.get("/my-listings", verifyToken, async (req, res) => {
+  try {
+    const email = req.user.email;
 
+    const studios = await studiosCollection
+      .find({ "host.email": email })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+
+    res.status(200).send(studios);
+  } catch (error) {
+    console.error("Failed to fetch studio listings:", error);
+
+    res.status(500).send({
+      message: "Failed to fetch studio listings",
+    });
+  }
+});
+
+app.get("/studios/edit/:id", verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        message: "Invalid studio ID",
+      });
+    }
+
+    const studio = await studiosCollection.findOne({
+      _id: new ObjectId(id),
+      "host.email": req.user.email,
+    });
+
+    if (!studio) {
+      return res.status(404).send({
+        message: "Studio not found or you do not own this studio",
+      });
+    }
+
+    res.status(200).send(studio);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({
+      message: "Failed to fetch studio",
+    });
+  }
+});
+
+app.patch("/studios/:id", verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        message: "Invalid studio ID",
+      });
+    }
+
+    const existingStudio = await studiosCollection.findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!existingStudio) {
+      return res.status(404).send({
+        message: "Studio not found",
+      });
+    }
+
+    if (existingStudio.host?.email !== req.user.email) {
+      return res.status(403).send({
+        message: "You cannot update another user's studio",
+      });
+    }
+
+    const {
+      title,
+      category,
+      capacity,
+      hourlyRate,
+      deposit,
+      location,
+      imageUrl,
+      amenities,
+      description,
+    } = req.body;
+
+    const updatedFields = {
+      title,
+      category,
+      capacity: Number(capacity),
+      hourlyRate: Number(hourlyRate),
+      deposit: Number(deposit),
+      location,
+      imageUrl,
+      amenities,
+      description,
+    };
+
+    if (
+      !title ||
+      !category ||
+      !location ||
+      !imageUrl ||
+      !description ||
+      !Array.isArray(amenities) ||
+      !Number.isFinite(updatedFields.capacity) ||
+      updatedFields.capacity < 1 ||
+      !Number.isFinite(updatedFields.hourlyRate) ||
+      updatedFields.hourlyRate < 0 ||
+      !Number.isFinite(updatedFields.deposit) ||
+      updatedFields.deposit < 0
+    ) {
+      return res.status(400).send({
+        message: "Please provide valid studio information",
+      });
+    }
+
+    const result = await studiosCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updatedFields }
+    );
+
+    res.status(200).send({
+      message: "Studio updated successfully",
+      modifiedCount: result.modifiedCount,
+    });
+  } catch (error) {
+    console.error("Failed to update studio:", error);
+
+    res.status(500).send({
+      message: "Failed to update studio",
+    });
+  }
+});
+
+
+app.delete("/studios/:id", verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        message: "Invalid studio ID",
+      });
+    }
+
+    const result = await studiosCollection.deleteOne({
+      _id: new ObjectId(id),
+      "host.email": req.user.email,
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).send({
+        message: "Studio not found or you do not own this studio",
+      });
+    }
+
+    res.status(200).send({
+      message: "Studio deleted successfully",
+    });
+  } catch (error) {
+    console.error("Failed to delete studio:", error);
+
+    res.status(500).send({
+      message: "Failed to delete studio",
+    });
+  }
+});
 
 
 app.get('/featured-studios', async (req, res) => {
