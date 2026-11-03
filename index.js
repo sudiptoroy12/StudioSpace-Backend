@@ -273,6 +273,36 @@ app.get('/studios/:id', async (req, res) => {
     res.send(studio);
 });
 
+
+app.post('/bookings',async (req, res) => {
+    const booking = req.body; 
+    const result = await bookingsCollection.insertOne(booking);
+    res.send(result);
+})
+
+app.get("/my-bookings/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+
+    const bookings = await bookingsCollection
+      .find({ email })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.send(bookings);
+  } catch (error) {
+    console.error("Failed to fetch bookings:", error);
+
+    res.status(500).send({
+      message: "Failed to retrieve bookings",
+    });
+  }
+});
+
+
+
+
+
 app.get('/featured-studios', async (req, res) => {
     const featuredStudios = await studiosCollection.find().limit(6).toArray();
     res.send(featuredStudios);
