@@ -84,7 +84,7 @@ const verifyToken = async (req, res, next) => {
   }
 };
 // insert single studio
-app.post("/studios", verifyToken, async (req, res) => {
+app.post("/api/studios", verifyToken, async (req, res) => {
   try {
     const {
       title,
@@ -182,7 +182,7 @@ app.post("/studios", verifyToken, async (req, res) => {
   }
 });
 // // insert multiple studios
-// app.post("/studios", verifyToken, async (req, res) => {
+// app.post("/api/studios", verifyToken, async (req, res) => {
 //   try {
 //     const { studios } = req.body;
 
@@ -286,19 +286,19 @@ app.post("/studios", verifyToken, async (req, res) => {
 //   }
 // });
 
-app.get('/studios', async (req, res) => {
+app.get('/api/studios', async (req, res) => {
     const studios = await studiosCollection.find().toArray();
     res.send(studios);
 })
 
-app.get('/studios/:id', async (req, res) => {
+app.get('/api/studios/:id', async (req, res) => {
     const { id } = req.params;
     const studio = await studiosCollection.findOne({ _id: new ObjectId(id) });
     res.send(studio);
 });
 
 
-app.post("/bookings", verifyToken, async (req, res) => {
+app.post("/api/bookings", verifyToken, async (req, res) => {
   try {
     const { studioId, date, startTime, hours } = req.body;
 
@@ -457,7 +457,7 @@ app.post("/bookings", verifyToken, async (req, res) => {
   }
 });
 
-app.get("/my-bookings", verifyToken, async (req, res) => {
+app.get("/api/my-bookings", verifyToken, async (req, res) => {
   try {
     const bookings = await bookingsCollection
       .find({ email: req.user.email })
@@ -474,7 +474,7 @@ app.get("/my-bookings", verifyToken, async (req, res) => {
   }
 });
 
-app.patch("/bookings/:id/cancel", verifyToken, async (req, res) => {
+app.patch("/api/bookings/:id/cancel", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -518,7 +518,7 @@ app.patch("/bookings/:id/cancel", verifyToken, async (req, res) => {
 });
 
 
-app.get("/my-listings", verifyToken, async (req, res) => {
+app.get("/api/my-listings", verifyToken, async (req, res) => {
   try {
     const email = req.user.email;
 
@@ -538,7 +538,7 @@ app.get("/my-listings", verifyToken, async (req, res) => {
   }
 });
 
-app.get("/studios/edit/:id", verifyToken, async (req, res) => {
+app.get("/api/studios/edit/:id", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -568,7 +568,7 @@ app.get("/studios/edit/:id", verifyToken, async (req, res) => {
   }
 });
 
-app.patch("/studios/:id", verifyToken, async (req, res) => {
+app.patch("/api/studios/:id", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -656,7 +656,7 @@ app.patch("/studios/:id", verifyToken, async (req, res) => {
 });
 
 
-app.delete("/studios/:id", verifyToken, async (req, res) => {
+app.delete("/api/studios/:id", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -691,7 +691,7 @@ app.delete("/studios/:id", verifyToken, async (req, res) => {
 
 
 
-app.get("/featured-studios", async (req, res) => {
+app.get("/api/featured-studios", async (req, res) => {
   try {
     const featuredStudios = await studiosCollection
       .find()
