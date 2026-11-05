@@ -690,16 +690,34 @@ app.delete("/studios/:id", verifyToken, async (req, res) => {
 });
 
 
-app.get('/featured-studios', async (req, res) => {
-    const featuredStudios = await studiosCollection.find().limit(6).toArray();
-    res.send(featuredStudios);
-})
+
+app.get("/featured-studios", async (req, res) => {
+  try {
+    const featuredStudios = await studiosCollection
+      .find()
+      .sort({ createdAt: -1 })
+      .limit(6)
+      .toArray();
+
+    res.status(200).send(featuredStudios);
+  } catch (error) {
+    console.error("Error fetching featured studios:", error);
+    res.status(500).send({
+      message: "Failed to fetch featured studios",
+    });
+  }
+});
+
 
 
 app.get('/', (req, res) => {
     res.send({message: "Server is running successfully!!"})
 })
 
+app.listen(PORT, () => {
+    console.log(`Server is running at ${PORT}`);
+    
+})
 
 
 export default app;
